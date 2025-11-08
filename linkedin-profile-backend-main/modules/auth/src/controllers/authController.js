@@ -232,10 +232,14 @@ export const sessionLogin = async (req, res) => {
     const expiresIn = 60 * 60 * 24 * 5 * 1000; // 5 days
     const sessionCookie = await admin.auth().createSessionCookie(idToken, { expiresIn });
 
+    // For cross-site cookies to be sent from browser to API, in production we
+    // must set SameSite=None and Secure=true. During development (non-prod)
+    // we'll use a safer SameSite policy.
+    const isProd = process.env.NODE_ENV === "production";
     res.cookie("session", sessionCookie, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
       maxAge: expiresIn,
     });
 
