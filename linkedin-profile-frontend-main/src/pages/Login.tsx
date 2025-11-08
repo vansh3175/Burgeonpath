@@ -83,7 +83,7 @@ const Login = () => {
 
       // Create session with backend
       await axios.post(
-        "http://localhost:5000/api/v1/auth/sessionLogin",
+        `${process.env.VITE_API_URL}/api/v1/auth/sessionLogin`,
         { idToken },
         { withCredentials: true }
       );
@@ -125,7 +125,7 @@ const Login = () => {
 
       // Create session with backend
       await axios.post(
-        "http://localhost:5000/api/v1/auth/sessionLogin",
+        `${process.env.VITE_API_URL}/api/v1/auth/sessionLogin`,
         { idToken },
         { withCredentials: true }
       );

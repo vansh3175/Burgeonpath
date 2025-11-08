@@ -104,7 +104,7 @@ const Signup = () => {
 
       // 3️⃣ Create secure session cookie
       await axios.post(
-        "http://localhost:5000/api/v1/auth/sessionLogin",
+        `${process.env.VITE_API_URL}/api/v1/auth/sessionLogin`,
         { idToken },
         { withCredentials: true }
       );
@@ -161,7 +161,7 @@ const Signup = () => {
 
       // 2️⃣ Create secure session cookie
       await axios.post(
-        "http://localhost:5000/api/v1/auth/sessionLogin",
+        `${process.env.VITE_API_URL}/api/v1/auth/sessionLogin`,
         { idToken },
         { withCredentials: true }
       );
