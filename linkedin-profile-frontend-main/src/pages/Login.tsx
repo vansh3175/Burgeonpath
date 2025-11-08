@@ -44,7 +44,7 @@ const Login = () => {
       const { email, password } = formData;
 
       const response = await axios.post(
-        ${import.meta.env.VITE_API_URL}/api/v1/admin/login,
+        `${import.meta.env.VITE_API_URL}/api/v1/admin/login`,
         { email, password },
         { withCredentials: true }
       );
@@ -76,7 +76,7 @@ const Login = () => {
       const idToken = await user.getIdToken(true);
 
       await axios.post(
-        ${import.meta.env.VITE_API_URL}/api/v1/auth/sessionLogin,
+        `${import.meta.env.VITE_API_URL}/api/v1/auth/sessionLogin`,
         { idToken },
         { withCredentials: true } // <--- ensure cookie is set by backend
       );
@@ -152,7 +152,7 @@ const Login = () => {
 
         // send token to backend and pass credentials so the cookie can be set
         const resp = await axios.post(
-          ${import.meta.env.VITE_API_URL}/api/v1/auth/sessionLogin,
+          `${import.meta.env.VITE_API_URL}/api/v1/auth/sessionLogin`,
           { idToken },
           { withCredentials: true } // <--- CRITICAL: allow backend to set cookie
         );
