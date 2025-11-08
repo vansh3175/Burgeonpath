@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { AlertCircle, Mail, ArrowLeft, Shield } from "lucide-react";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword } from "firebase/auth";
 import { app } from "../config/firebase";
 import axios from "axios";
 import { RouteGuard } from "@/components/common/RouteGuard";
@@ -47,7 +47,7 @@ const Login = () => {
       const { email, password } = formData;
 
       const response = await axios.post(
-        `${process.env.VITE_API_URL}/api/v1/admin/login`,
+        `${import.meta.env.VITE_API_URL}/api/v1/admin/login`,
         { email, password },
         { withCredentials: true }
       );
@@ -83,7 +83,7 @@ const Login = () => {
 
       // Create session with backend
       await axios.post(
-        `${process.env.VITE_API_URL}/api/v1/auth/sessionLogin`,
+          `${import.meta.env.VITE_API_URL}/api/v1/auth/sessionLogin`,
         { idToken },
         { withCredentials: true }
       );
@@ -115,48 +115,65 @@ const Login = () => {
     }
   };
 
-  // ✅ Google Login (User only)
+  // ✅ Google Login (User only, redirect flow to avoid COOP popup warnings)
   const handleGoogleLogin = async () => {
     try {
       setIsLoading(true);
-      const signin = await signInWithPopup(auth, provider);
-      const user = signin.user;
-      const idToken = await user.getIdToken();
-
-      // Create session with backend
-      await axios.post(
-        `${process.env.VITE_API_URL}/api/v1/auth/sessionLogin`,
-        { idToken },
-        { withCredentials: true }
-      );
-
-      // ✅ Store user data in localStorage
-      const userData = {
-        id: user.uid,
-        email: user.email,
-        name: user.displayName || user.email.split('@')[0],
-        photoURL: user.photoURL,
-        emailVerified: user.emailVerified,
-        loginTime: new Date().toISOString(),
-        isGoogleUser: true
-      };
-
-      storeUserData(userData);
-
-      // Clear any existing admin data (to prevent conflicts)
-      localStorage.removeItem('adminEmail');
-      localStorage.removeItem('adminName');
-      localStorage.removeItem('adminRole');
-      localStorage.removeItem('adminLoginTime');
-
-      navigate("/payment");
+      await signInWithRedirect(auth, provider);
     } catch (error) {
-      console.error("Google login error:", error);
-      setError("Something went wrong during Google login.");
-    } finally {
+      console.error("Google login (redirect) error:", error);
+      setError("Something went wrong during Google login redirect.");
       setIsLoading(false);
     }
   };
+
+  // Handle Google redirect result
+  useEffect(() => {
+    let mounted = true;
+    const processRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (!result) return;
+        setIsLoading(true);
+        const user = result.user;
+        const idToken = await user.getIdToken();
+
+        // Create session with backend
+        await axios.post(
+          `${import.meta.env.VITE_API_URL}/api/v1/auth/sessionLogin`,
+          { idToken }
+        );
+
+        // ✅ Store user data in localStorage
+        const userData = {
+          id: user.uid,
+          email: user.email,
+          name: user.displayName || user.email.split('@')[0],
+          photoURL: user.photoURL,
+          emailVerified: user.emailVerified,
+          loginTime: new Date().toISOString(),
+          isGoogleUser: true
+        };
+
+        storeUserData(userData);
+
+        // Clear any existing admin data (to prevent conflicts)
+        localStorage.removeItem('adminEmail');
+        localStorage.removeItem('adminName');
+        localStorage.removeItem('adminRole');
+        localStorage.removeItem('adminLoginTime');
+
+        navigate("/payment");
+      } catch (error) {
+        console.error("Google login redirect handling error:", error);
+        setError("Something went wrong during Google login (redirect).");
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+    processRedirectResult();
+    return () => { mounted = false; };
+  }, [auth, navigate]);
 
   const handleSubmit = () => {
     if (isAdminMode) {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,9 @@ import {
   createUserWithEmailAndPassword,
   getAuth,
   GoogleAuthProvider,
-  signInWithPopup,
+  // we'll use redirect flow instead of popup to avoid COOP popup window.closed warnings
+  signInWithRedirect,
+  getRedirectResult,
   signInWithCustomToken
 } from "firebase/auth";
 import { app } from "../config/firebase";
@@ -84,7 +86,7 @@ const Signup = () => {
 
       // 1️⃣ Register user with backend (creates Firebase user + Firestore profile)
       const response = await axios.post(
-        `${process.env.VITE_API_URL}/api/v1/auth/register`,
+        `${import.meta.env.VITE_API_URL}/api/v1/auth/register`,
         {
           firstName,
           lastName,
@@ -104,7 +106,7 @@ const Signup = () => {
 
       // 3️⃣ Create secure session cookie
       await axios.post(
-        `${process.env.VITE_API_URL}/api/v1/auth/sessionLogin`,
+        `${import.meta.env.VITE_API_URL}/api/v1/auth/sessionLogin`,
         { idToken },
         { withCredentials: true }
       );
@@ -142,64 +144,86 @@ const Signup = () => {
   };
 
   // ✅ Google Signup with profile completion
+  // Use redirect flow to avoid Cross-Origin-Opener-Policy popup warnings and
+  // to be compatible with strict COOP/COEP policies on some hosts.
   const handleGoogleSignup = async () => {
     try {
       setIsLoading(true);
       const provider = new GoogleAuthProvider();
-      const signin = await signInWithPopup(auth, provider);
-      const user = signin.user;
-      const idToken = await user.getIdToken();
-
-      // 1️⃣ Send to backend for unified user creation
-      const response = await axios.post(
-        `${process.env.VITE_API_URL}/api/v1/auth/google`,
-        { idToken },
-        { withCredentials: true }
-      );
-
-      const { user: backendUser, isNewUser, customToken } = response.data;
-
-      // 2️⃣ Create secure session cookie
-      await axios.post(
-        `${process.env.VITE_API_URL}/api/v1/auth/sessionLogin`,
-        { idToken },
-        { withCredentials: true }
-      );
-
-      // ✅ STORE USER DATA IN LOCALSTORAGE
-      const userData = {
-        id: user.uid,
-        email: user.email,
-        name: user.displayName || user.email?.split('@')[0] || 'User',
-        firstName: user.displayName?.split(' ')[0] || '',
-        lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
-        photoURL: user.photoURL,
-        emailVerified: user.emailVerified,
-        loginTime: new Date().toISOString(),
-        signupMethod: 'google',
-        isNewUser: isNewUser
-      };
-
-      storeUserData(userData);
-      
-      // ✅ CLEAR ANY EXISTING ADMIN DATA
-      clearAdminData();
-
-      // 3️⃣ If new Google user, show profile completion
-      if (isNewUser) {
-        setGoogleUser(backendUser);
-        setShowProfileCompletion(true);
-      } else {
-        // Existing user, go to payment
-        navigate("/payment");
-      }
+      // Start redirect flow; the result will be handled in the effect below.
+      await signInWithRedirect(auth, provider);
     } catch (error: any) {
-      console.error("Google signup error:", error);
-      setError(error.response?.data?.message || "Something went wrong with Google signup.");
-    } finally {
+      console.error("Google signup (redirect) error:", error);
+      setError(error.response?.data?.message || "Something went wrong while redirecting for Google signup.");
       setIsLoading(false);
     }
   };
+
+  // Handle redirect result after returning from Google
+  useEffect(() => {
+    let mounted = true;
+    const processRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (!result) return; // no redirect result
+
+        setIsLoading(true);
+        const user = result.user;
+        const idToken = await user.getIdToken();
+
+        // 1️⃣ Send to backend for unified user creation
+        const response = await axios.post(
+          `${import.meta.env.VITE_API_URL}/api/v1/auth/google`,
+          { idToken }
+        );
+
+        const { user: backendUser, isNewUser, customToken } = response.data;
+
+        // 2️⃣ Create secure session cookie (axios default has withCredentials=true set in main)
+        await axios.post(
+          `${import.meta.env.VITE_API_URL}/api/v1/auth/sessionLogin`,
+          { idToken }
+        );
+
+        // ✅ STORE USER DATA IN LOCALSTORAGE
+        const userData = {
+          id: user.uid,
+          email: user.email,
+          name: user.displayName || user.email?.split('@')[0] || 'User',
+          firstName: user.displayName?.split(' ')[0] || '',
+          lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
+          photoURL: user.photoURL,
+          emailVerified: user.emailVerified,
+          loginTime: new Date().toISOString(),
+          signupMethod: 'google',
+          isNewUser: isNewUser
+        };
+
+        storeUserData(userData);
+        clearAdminData();
+
+        // 3️⃣ If new Google user, show profile completion
+        if (isNewUser) {
+          if (mounted) {
+            setGoogleUser(backendUser);
+            setShowProfileCompletion(true);
+          }
+        } else {
+          // Existing user, go to payment
+          navigate("/payment");
+        }
+      } catch (error: any) {
+        console.error("Google redirect handling error:", error);
+        // Most axios calls will include credentials by default; set a helpful message.
+        setError(error.response?.data?.message || error.message || "Failed to process Google sign-in.");
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+
+    processRedirectResult();
+    return () => { mounted = false; };
+  }, [auth, navigate]);
 
   // ✅ Complete profile for Google users
   const handleCompleteProfile = async () => {
@@ -207,7 +231,7 @@ const Signup = () => {
       setIsLoading(true);
       
       await axios.post(
-        `${process.env.VITE_API_URL}/api/v1/auth/complete-profile`,
+        `${import.meta.env.VITE_API_URL}/api/v1/auth/complete-profile`,
         {
           uid: googleUser.uid,
           phone: formData.phone,

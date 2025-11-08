@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const API_URL = process.env.VITE_API_URL; // API URL from environment variable
+const API_URL = import.meta.env.VITE_API_URL; // API URL from environment variable
 
 export default function StudentSignup() {
   const [step, setStep] = useState(1); // 1: Referral Code, 2: Registration Form
