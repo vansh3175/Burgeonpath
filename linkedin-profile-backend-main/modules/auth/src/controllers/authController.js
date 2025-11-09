@@ -232,23 +232,20 @@ export const sessionLogin = async (req, res) => {
     const expiresIn = 60 * 60 * 24 * 5 * 1000; // 5 days
     const sessionCookie = await admin.auth().createSessionCookie(idToken, { expiresIn });
 
-    // For cross-site cookies to be sent from browser to API, in production we
-    // must set SameSite=None and Secure=true. During development (non-prod)
-    // we'll use a safer SameSite policy.
-    const isProd = process.env.NODE_ENV === "production";
     res.cookie("session", sessionCookie, {
       httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? "none" : "lax",
+      secure: true,           // always true — both Vercel & Render are HTTPS
+      sameSite: "none",       // required for cross-origin cookies
       maxAge: expiresIn,
     });
 
-    return res.status(200).json({ message: "Session created" });
+    return res.status(200).json({ success: true, message: "Session created" });
   } catch (err) {
     console.error("Error in sessionLogin:", err);
-    return res.status(401).json({ message: "Invalid ID token" });
+    return res.status(401).json({ success: false, message: "Invalid ID token" });
   }
 };
+
 
 // 🔹 Logout (existing - keep this)
 export const logout = (req, res) => {
